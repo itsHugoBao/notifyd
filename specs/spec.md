@@ -1,8 +1,8 @@
 # Spec：可靠的对外通知投递服务
 
-> 状态：**草稿 — 待人工评审**
-> 本 spec 遵循 SDD（Spec-Driven Development）流程，先于任何代码编写。
-> 它是后续实现与测试的评审契约（contract）。
+> 状态：**已定稿**（人工评审 + Grok 4.5 交叉评审后确认，评审修订见 git 历史）
+> 本 spec 遵循 SDD（Spec-Driven Development）流程，先于任何代码编写，
+> 是实现与测试的评审契约（contract）。实现已按本契约完成并通过全部测试。
 
 ## 1. 问题陈述
 
