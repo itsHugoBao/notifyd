@@ -1,0 +1,4 @@
+/notifyd
+*.db
+*.db-shm
+*.db-wal
