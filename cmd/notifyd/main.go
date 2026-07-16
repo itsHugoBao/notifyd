@@ -8,33 +8,52 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
+	"rc_hugobao/internal/api"
 	"rc_hugobao/internal/config"
+	"rc_hugobao/internal/dispatch"
+	"rc_hugobao/internal/store"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-
-	cfg, err := config.Load()
-	if err != nil {
-		logger.Error("加载配置失败", "err", err)
+	if err := run(logger); err != nil {
+		logger.Error("notifyd 退出", "err", err)
 		os.Exit(1)
 	}
+}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	})
+func run(logger *slog.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
+	}
 
-	srv := &http.Server{Addr: cfg.Addr, Handler: mux}
+	st, err := store.OpenSQLite(cfg.DBPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+
+	handler := api.NewHandler(st, logger, cfg.MaxBodyBytes)
+	srv := &http.Server{Addr: cfg.Addr, Handler: handler.Mux()}
+	dispatcher := dispatch.New(st, cfg, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		logger.Info("notifyd 启动", "addr", cfg.Addr, "db", cfg.DBPath)
+		defer wg.Done()
+		dispatcher.Run(ctx) // ctx 取消后等在途投递完成才返回
+	}()
+
+	go func() {
+		logger.Info("notifyd 启动", "addr", cfg.Addr, "db", cfg.DBPath, "workers", cfg.Workers)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Error("http server 退出", "err", err)
 			stop()
@@ -49,5 +68,7 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		logger.Error("http 停机超时", "err", err)
 	}
+	wg.Wait() // 等 dispatcher 的在途投递收尾（受单次尝试超时约束）
 	logger.Info("已退出")
+	return nil
 }
