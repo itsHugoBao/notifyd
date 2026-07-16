@@ -39,7 +39,7 @@ func run(logger *slog.Logger) error {
 	defer st.Close()
 
 	handler := api.NewHandler(st, logger, cfg.MaxBodyBytes)
-	srv := &http.Server{Addr: cfg.Addr, Handler: handler.Mux()}
+	srv := &http.Server{Addr: cfg.Addr, Handler: handler.Mux(), ReadHeaderTimeout: 5 * time.Second}
 	dispatcher := dispatch.New(st, cfg, logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)

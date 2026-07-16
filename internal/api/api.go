@@ -62,15 +62,16 @@ type notificationDTO struct {
 }
 
 func toDTO(n *store.Notification) notificationDTO {
-	if n.Headers == nil {
-		n.Headers = map[string]string{}
+	headers := n.Headers
+	if headers == nil {
+		headers = map[string]string{}
 	}
 	dto := notificationDTO{
 		ID:             n.ID,
 		IdempotencyKey: n.IdempotencyKey,
 		TargetURL:      n.TargetURL,
 		Method:         n.Method,
-		Headers:        n.Headers,
+		Headers:        headers,
 		Body:           n.Body,
 		Status:         n.Status,
 		Attempts:       n.Attempts,

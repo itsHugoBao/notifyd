@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 func newTestStore(t *testing.T) *SQLite {
@@ -139,6 +140,26 @@ func TestAttemptOutcomes(t *testing.T) {
 
 	if err := s.MarkDead(ctx, "no-such-id", "x", now); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("期望 ErrNotFound, 得到 %v", err)
+	}
+
+	// 迟到写回守卫：任务已不在 delivering 时 Mark* 必须失败、不得覆盖新状态
+	if err := s.MarkRetry(ctx, n.ID, now, "late", now); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("对 succeeded 的迟到写回应被拒绝, 得到 %v", err)
+	}
+	got, _ = s.Get(ctx, n.ID)
+	if got.Status != StatusSucceeded || got.Attempts != 2 {
+		t.Fatalf("迟到写回不应改动记录: %+v", got)
+	}
+}
+
+func TestTruncateKeepsUTF8(t *testing.T) {
+	s := "永久失败: 供应商返回异常"
+	cut := truncate(s, 16) // "供"占 [14,17)，16 落在其中间
+	if !utf8.ValidString(cut) {
+		t.Fatalf("截断产生非法 UTF-8: %q", cut)
+	}
+	if cut != "永久失败: " { // 应回退到 14（"供"之前）
+		t.Fatalf("截断位置不对: %q", cut)
 	}
 }
 

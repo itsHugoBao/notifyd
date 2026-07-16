@@ -264,6 +264,47 @@ func TestVendorReceivesVerbatimRequest(t *testing.T) {
 	}
 }
 
+// TestVendorHangConsumesBudget 回归 Grok CR Critical：供应商挂起耗尽单次超时后，
+// 结果必须能写回（写库不得复用已 DeadlineExceeded 的 attemptCtx），
+// attempts 正常消耗、后续重试正常进行。
+func TestVendorHangConsumesBudget(t *testing.T) {
+	cfg := testConfig()
+	cfg.AttemptTimeout = 150 * time.Millisecond
+
+	var mu sync.Mutex
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		calls++
+		first := calls == 1
+		mu.Unlock()
+		if first {
+			time.Sleep(500 * time.Millisecond) // 挂起超过 AttemptTimeout
+		}
+		w.WriteHeader(200)
+	}))
+	t.Cleanup(srv.Close)
+
+	h := newHarness(t, cfg, true)
+	id := h.submit(t, srv.URL+"/hook")
+
+	got := h.waitStatus(t, id, "succeeded")
+	if got["attempts"].(float64) != 2 {
+		t.Fatalf("首次挂起超时应消耗 1 次预算, 期望共 2 次尝试, 得到 %v", got["attempts"])
+	}
+}
+
+func TestRedirectNotFollowed(t *testing.T) {
+	v := newVendor(t, 301)
+	h := newHarness(t, testConfig(), true)
+
+	id := h.submit(t, v.srv.URL+"/hook")
+	got := h.waitStatus(t, id, "dead")
+	if got["attempts"].(float64) != 1 || !strings.Contains(got["last_error"].(string), "301") {
+		t.Fatalf("3xx 应一次即死信且记录状态码: attempts=%v err=%v", got["attempts"], got["last_error"])
+	}
+}
+
 func postJSON(t *testing.T, url, body string) (*http.Response, map[string]any) {
 	t.Helper()
 	resp, err := http.Post(url, "application/json", strings.NewReader(body))

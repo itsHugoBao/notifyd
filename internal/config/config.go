@@ -42,6 +42,13 @@ func Load() (Config, error) {
 	if cfg.Workers < 1 || cfg.MaxAttempts < 1 {
 		return Config{}, fmt.Errorf("workers 与 max attempts 必须 >= 1")
 	}
+	// 可见性超时必须留出「单次尝试 + 结果写库」的余量，否则在途尝试会被
+	// 误判为崩溃残留而回收，与迟到写回形成竞态（spec §5.5）。
+	if cfg.VisibilityTimeout <= cfg.AttemptTimeout {
+		return Config{}, fmt.Errorf(
+			"NOTIFYD_VISIBILITY_TIMEOUT (%v) 必须大于 NOTIFYD_ATTEMPT_TIMEOUT (%v)",
+			cfg.VisibilityTimeout, cfg.AttemptTimeout)
+	}
 	return cfg, nil
 }
 

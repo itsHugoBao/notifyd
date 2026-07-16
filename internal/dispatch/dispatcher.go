@@ -2,6 +2,7 @@ package dispatch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -95,6 +96,11 @@ func (d *Dispatcher) reclaimStale(ctx context.Context) {
 	}
 }
 
+// writeBackTimeout 是投递结果写库的独立超时。写库绝不能复用 attemptCtx：
+// 尝试耗尽 AttemptTimeout 后 attemptCtx 已 DeadlineExceeded，复用会导致结果
+// 写不回、任务卡在 delivering、attempts 不消耗——持续超时的供应商将无限重投。
+const writeBackTimeout = 5 * time.Second
+
 // deliver 执行一次投递尝试并按结果推进状态机（spec §5.2）。
 // 使用 WithoutCancel：停机时在途尝试跑完（受单次超时约束），而不是被腰斩。
 func (d *Dispatcher) deliver(ctx context.Context, n *store.Notification) {
@@ -103,6 +109,9 @@ func (d *Dispatcher) deliver(ctx context.Context, n *store.Notification) {
 
 	statusCode, attemptErr := d.attempt(attemptCtx, n)
 	outcome := Classify(statusCode, attemptErr)
+
+	writeCtx, writeCancel := context.WithTimeout(context.WithoutCancel(ctx), writeBackTimeout)
+	defer writeCancel()
 
 	errMsg := ""
 	if attemptErr != nil {
@@ -116,20 +125,24 @@ func (d *Dispatcher) deliver(ctx context.Context, n *store.Notification) {
 	var storeErr error
 	switch {
 	case outcome == OutcomeSuccess:
-		storeErr = d.store.MarkSucceeded(attemptCtx, n.ID, now)
+		storeErr = d.store.MarkSucceeded(writeCtx, n.ID, now)
 		d.logger.Info("投递成功", "id", n.ID, "attempt", attemptNum)
 	case outcome == OutcomePermanent:
-		storeErr = d.store.MarkDead(attemptCtx, n.ID, "永久失败: "+errMsg, now)
+		storeErr = d.store.MarkDead(writeCtx, n.ID, "永久失败: "+errMsg, now)
 		d.logger.Warn("永久失败，进入死信", "id", n.ID, "err", errMsg)
 	case attemptNum >= d.cfg.MaxAttempts:
-		storeErr = d.store.MarkDead(attemptCtx, n.ID, "重试预算耗尽: "+errMsg, now)
+		storeErr = d.store.MarkDead(writeCtx, n.ID, "重试预算耗尽: "+errMsg, now)
 		d.logger.Warn("重试预算耗尽，进入死信", "id", n.ID, "attempts", attemptNum, "err", errMsg)
 	default:
 		delay := Backoff(d.cfg.RetryBase, d.cfg.RetryCap, attemptNum)
-		storeErr = d.store.MarkRetry(attemptCtx, n.ID, now.Add(delay), errMsg, now)
+		storeErr = d.store.MarkRetry(writeCtx, n.ID, now.Add(delay), errMsg, now)
 		d.logger.Info("投递失败，安排重试", "id", n.ID, "attempt", attemptNum, "next_in", delay.Round(time.Millisecond), "err", errMsg)
 	}
-	if storeErr != nil {
+	switch {
+	case errors.Is(storeErr, store.ErrNotFound):
+		// 任务已不在 delivering（可见性超时被回收并由他人推进）——迟到的写回按无效处理。
+		d.logger.Warn("写回被忽略：任务已被回收重投", "id", n.ID)
+	case storeErr != nil:
 		// 写回失败：任务保持 delivering，由可见性超时回收重投（at-least-once）。
 		d.logger.Error("写回投递结果失败", "id", n.ID, "err", storeErr)
 	}

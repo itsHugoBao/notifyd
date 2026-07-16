@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	_ "modernc.org/sqlite"
 )
@@ -141,6 +142,9 @@ func (s *SQLite) MarkDead(ctx context.Context, id string, lastError string, now 
 	return s.finishAttempt(ctx, id, StatusDead, nil, lastError, now)
 }
 
+// finishAttempt 只推进仍处于 delivering 的行：迟到的写回（任务已被可见性超时
+// 回收并由他人推进）不得覆盖新状态，例如把 succeeded 打回 pending。
+// 命中 0 行时返回 ErrNotFound，调用方视为无效写回。
 func (s *SQLite) finishAttempt(ctx context.Context, id, status string, nextAt *time.Time, lastError string, now time.Time) error {
 	next := int64(0)
 	if nextAt != nil {
@@ -150,8 +154,8 @@ func (s *SQLite) finishAttempt(ctx context.Context, id, status string, nextAt *t
 		UPDATE notifications
 		SET status = ?, attempts = attempts + 1, next_attempt_at = ?,
 		    claimed_at = NULL, last_error = ?, updated_at = ?
-		WHERE id = ?`,
-		status, next, truncate(lastError, 1024), ms(now), id)
+		WHERE id = ? AND status = ?`,
+		status, next, truncate(lastError, 1024), ms(now), id, StatusDelivering)
 	if err != nil {
 		return err
 	}
@@ -257,11 +261,16 @@ func mapsEqual(a, b map[string]string) bool {
 	return true
 }
 
+// truncate 按 byte 上限截断但不切断 UTF-8 字符（last_error 可能含中文）。
 func truncate(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
-	return s[:max]
+	cut := max
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 func requireOneRow(res sql.Result) error {
