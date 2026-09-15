@@ -47,6 +47,14 @@ curl http://localhost:8080/api/notifications/<id>
 curl -X POST http://localhost:8080/api/notifications/<id>/redeliver
 ```
 
+运维探活与队列统计（`specs/readyz-stats`）：
+
+```bash
+curl -i http://localhost:8080/healthz     # 进程 liveness：200，空 body
+curl -i http://localhost:8080/readyz      # 存储 readiness：200 {"status":"ready"} 或 503 {"status":"not_ready","error":"..."}
+curl http://localhost:8080/api/stats      # 只读计数：{"pending":0,"delivering":0,"succeeded":0,"dead":0}
+```
+
 运行测试（单元 + 端到端，含 race detector）：
 
 ```bash
@@ -88,7 +96,7 @@ go test -race ./...
   认领用单条原子 `UPDATE ... RETURNING`，无双认领窗口。
 - `internal/dispatch`：轮询认领 → worker 池并发投递 → 按结果分类推进状态机；
   另有后台回收循环处理认领超时（进程崩溃残留）。
-- `internal/api`：提交（202/200/409/400）、状态查询、死信重放。
+- `internal/api`：提交（202/200/409/400）、状态查询、死信重放；另有 `/healthz`（liveness）、`/readyz`（SQLite ping）、`/api/stats`（按状态计数）。
 
 代码 ~600 行，测试 ~700 行；唯一第三方依赖是纯 Go 的 SQLite 驱动 `modernc.org/sqlite`
 （免 cgo）。不引入 web 框架、uuid 库——标准库够用时不加依赖。

@@ -31,6 +31,8 @@ func (h *Handler) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
+	mux.HandleFunc("GET /readyz", h.readyz)
+	mux.HandleFunc("GET /api/stats", h.stats)
 	mux.HandleFunc("POST /api/notifications", h.create)
 	mux.HandleFunc("GET /api/notifications/{id}", h.get)
 	mux.HandleFunc("POST /api/notifications/{id}/redeliver", h.redeliver)
@@ -138,6 +140,26 @@ func (h *Handler) get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toDTO(n))
+}
+
+func (h *Handler) readyz(w http.ResponseWriter, r *http.Request) {
+	if err := h.store.Ping(r.Context()); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{
+			"status": "not_ready",
+			"error":  err.Error(),
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+}
+
+func (h *Handler) stats(w http.ResponseWriter, r *http.Request) {
+	counts, err := h.store.CountByStatus(r.Context())
+	if err != nil {
+		h.internalError(w, "统计队列", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, counts)
 }
 
 func (h *Handler) redeliver(w http.ResponseWriter, r *http.Request) {
