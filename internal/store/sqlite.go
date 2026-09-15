@@ -196,6 +196,39 @@ func (s *SQLite) Redeliver(ctx context.Context, id string, now time.Time) (*Noti
 	return s.Get(ctx, id)
 }
 
+func (s *SQLite) Ping(ctx context.Context) error {
+	return s.db.PingContext(ctx)
+}
+
+func (s *SQLite) CountByStatus(ctx context.Context) (StatusCounts, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT status, COUNT(*) FROM notifications GROUP BY status`)
+	if err != nil {
+		return StatusCounts{}, err
+	}
+	defer rows.Close()
+
+	var counts StatusCounts
+	for rows.Next() {
+		var status string
+		var n int
+		if err := rows.Scan(&status, &n); err != nil {
+			return StatusCounts{}, err
+		}
+		switch status {
+		case StatusPending:
+			counts.Pending = n
+		case StatusDelivering:
+			counts.Delivering = n
+		case StatusSucceeded:
+			counts.Succeeded = n
+		case StatusDead:
+			counts.Dead = n
+		}
+	}
+	return counts, rows.Err()
+}
+
 // --- 内部工具 ---
 
 type rowScanner interface{ Scan(dest ...any) error }

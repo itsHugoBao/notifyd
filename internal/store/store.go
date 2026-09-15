@@ -61,5 +61,19 @@ type Store interface {
 	// Redeliver 将 dead 通知重置为 pending 并重置重试预算（spec §3.3）。
 	Redeliver(ctx context.Context, id string, now time.Time) (*Notification, error)
 
+	// Ping 探测底层存储是否可达（readyz-stats）。
+	Ping(ctx context.Context) error
+
+	// CountByStatus 按状态统计队列深度（readyz-stats）；缺失状态计为 0。
+	CountByStatus(ctx context.Context) (StatusCounts, error)
+
 	Close() error
+}
+
+// StatusCounts 是 GET /api/stats 的只读计数（readyz-stats sketch）。
+type StatusCounts struct {
+	Pending    int `json:"pending"`
+	Delivering int `json:"delivering"`
+	Succeeded  int `json:"succeeded"`
+	Dead       int `json:"dead"`
 }
