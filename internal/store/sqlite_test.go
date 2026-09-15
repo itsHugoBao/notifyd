@@ -214,3 +214,68 @@ func TestRedeliver(t *testing.T) {
 		t.Fatalf("期望 ErrNotFound, 得到 %v", err)
 	}
 }
+
+func TestPing(t *testing.T) {
+	s := newTestStore(t)
+	if err := s.Ping(context.Background()); err != nil {
+		t.Fatalf("健康库 Ping 应成功: %v", err)
+	}
+
+	closed, err := OpenSQLite(filepath.Join(t.TempDir(), "closed.db"))
+	if err != nil {
+		t.Fatalf("打开测试库: %v", err)
+	}
+	closed.Close()
+	if err := closed.Ping(context.Background()); err == nil {
+		t.Fatal("关闭后的库 Ping 应失败")
+	}
+}
+
+func TestCountByStatus(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	empty, err := s.CountByStatus(ctx)
+	if err != nil {
+		t.Fatalf("空库 CountByStatus: %v", err)
+	}
+	if empty != (StatusCounts{}) {
+		t.Fatalf("空库应全 0, 得到 %+v", empty)
+	}
+
+	for i := 0; i < 4; i++ {
+		if _, _, err := s.Create(ctx, sample(""), now); err != nil {
+			t.Fatalf("Create #%d: %v", i, err)
+		}
+	}
+
+	claimed, err := s.ClaimDue(ctx, now, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("ClaimDue succeeded: err=%v n=%d", err, len(claimed))
+	}
+	if err := s.MarkSucceeded(ctx, claimed[0].ID, now); err != nil {
+		t.Fatalf("MarkSucceeded: %v", err)
+	}
+
+	claimed, err = s.ClaimDue(ctx, now, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("ClaimDue dead: err=%v n=%d", err, len(claimed))
+	}
+	if err := s.MarkDead(ctx, claimed[0].ID, "test", now); err != nil {
+		t.Fatalf("MarkDead: %v", err)
+	}
+
+	claimed, err = s.ClaimDue(ctx, now, 1)
+	if err != nil || len(claimed) != 1 {
+		t.Fatalf("ClaimDue delivering: err=%v n=%d", err, len(claimed))
+	}
+
+	got, err := s.CountByStatus(ctx)
+	if err != nil {
+		t.Fatalf("CountByStatus: %v", err)
+	}
+	want := StatusCounts{Pending: 1, Delivering: 1, Succeeded: 1, Dead: 1}
+	if got != want {
+		t.Fatalf("计数不对: got=%+v want=%+v", got, want)
+	}
+}
