@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"rc_hugobao/internal/store"
+	"notifyd/internal/store"
 )
 
 func timeNow() time.Time { return time.Now().UTC() }

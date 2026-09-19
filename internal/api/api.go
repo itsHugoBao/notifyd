@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"time"
 
-	"rc_hugobao/internal/store"
+	"notifyd/internal/store"
 )
 
 var allowedMethods = map[string]bool{"POST": true, "PUT": true, "PATCH": true}
