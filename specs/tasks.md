@@ -12,7 +12,7 @@
 | T3 | HTTP API | §3、S6 | `feat` |
 | T4 | 投递引擎（dispatcher + worker） | §5、S2、S3、S4 | `feat` |
 | T5 | 集成测试 | §10 | `test` |
-| T6 | README | 作业提交要求 | `docs` |
+| T6 | README | — | `docs` |
 
 ## T1 项目脚手架
 
