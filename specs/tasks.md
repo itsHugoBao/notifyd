@@ -16,7 +16,7 @@
 
 ## T1 项目脚手架
 
-- `go.mod`（module `github.com/hugobao/rc_hugobao`）
+- `go.mod`（module `notifyd`）
 - 目录结构：
   ```
   cmd/notifyd/main.go      # 组装 + 优雅停机

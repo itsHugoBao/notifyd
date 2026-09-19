@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"rc_hugobao/internal/config"
-	"rc_hugobao/internal/store"
+	"notifyd/internal/config"
+	"notifyd/internal/store"
 )
 
 type Dispatcher struct {

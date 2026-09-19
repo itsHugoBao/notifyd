@@ -1,4 +1,4 @@
-module rc_hugobao
+module notifyd
 
 go 1.26.3
 

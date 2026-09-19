@@ -16,10 +16,10 @@ import (
 	"testing"
 	"time"
 
-	"rc_hugobao/internal/api"
-	"rc_hugobao/internal/config"
-	"rc_hugobao/internal/dispatch"
-	"rc_hugobao/internal/store"
+	"notifyd/internal/api"
+	"notifyd/internal/config"
+	"notifyd/internal/dispatch"
+	"notifyd/internal/store"
 )
 
 func testConfig() config.Config {
