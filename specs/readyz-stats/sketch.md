@@ -1,7 +1,7 @@
 # Sketch: readyz + queue stats
 
 > Mode: Sketch（有界的运维可见性；不改动通知投递契约）
-> Target repo: https://github.com/itsHugoBao/rc_hugobao
+> Target repo: https://github.com/itsHugoBao/notifyd
 > Feature slug: `readyz-stats`
 > Status: approved for implementation（Meetup 最小闭环演示）
 
